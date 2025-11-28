@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IELTS Speaking Simulator</title>
+    <style>
+        :root { --bg-color: #f0f2f5; --user-bg: #007aff; --ai-bg: #e4e6eb; --text-main: #050505; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-color); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* 顶部导航 */
+        header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        h2 { margin: 0; font-size: 18px; color: #333; }
+        #status-badge { padding: 6px 12px; border-radius: 15px; font-size: 12px; font-weight: bold; color: white; background-color: #8e8e93; transition: all 0.3s; }
+        .mode-idle { background-color: #8e8e93; }
+        .mode-listening { background-color: #34c759; }
+        .mode-processing { background-color: #007aff; }
+        .mode-speaking { background-color: #ff9500; }
+
+        /* 聊天区 */
+        #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .msg { max-width: 80%; padding: 10px 16px; border-radius: 18px; font-size: 16px; line-height: 1.5; position: relative; }
+        .msg.user { align-self: flex-end; background-color: var(--user-bg); color: white; border-bottom-right-radius: 4px; }
+        .msg.ai { align-self: flex-start; background-color: var(--ai-bg); color: var(--text-main); border-bottom-left-radius: 4px; }
+        .msg .name { font-size: 11px; margin-bottom: 4px; opacity: 0.7; display: block; }
+
+        /* 底部控制区 */
+        footer { background: white; padding: 20px; border-top: 1px solid #ddd; display: flex; flex-direction: column; gap: 15px; }
+        #subtitle { height: 24px; color: #666; font-style: italic; text-align: center; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        button:active { opacity: 0.8; }
+        
+        #btnStart { background-color: #34c759; color: white; flex: 2; }
+        #btnStart:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        #btnReset { background-color: #ff3b30; color: white; flex: 1; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>IELTS Examiner AI</h2>
+        <div id="status-badge" class="mode-idle">READY</div>
+    </header>
+
+    <div id="chat-box">
+        <div class="msg ai">
+            <span class="name">Examiner</span>
+            Welcome to the IELTS Speaking test simulation. Click "Start Test" when you are ready.
+        </div>
+    </div>
+
+    <footer>
+        <div id="subtitle">...</div>
+        <div class="btn-group">
+            <button id="btnStart">Start Test</button>
+            <button id="btnReset">Restart</button>
+        </div>
+    </footer>
+
+    <script>
+        let ws = null;
+        let audioCtx, processor, globalStream;
+        let synth = window.speechSynthesis;
+        let voices = [];
+        
+        // 配置
+        const CFG = { threshold: 0.02, silence_ms: 1500, sample_rate: 16000 };
+        let state = { silenceStart: null, isSpeaking: false, canSend: false };
+
+        const ui = {
+            status: document.getElementById('status-badge'),
+            chat: document.getElementById('chat-box'),
+            sub: document.getElementById('subtitle'),
+            btnStart: document.getElementById('btnStart'),
+            btnReset: document.getElementById('btnReset')
+        };
+
+        // 加载语音
+        window.speechSynthesis.onvoiceschanged = () => { voices = synth.getVoices(); };
+
+        // --- 按钮事件 ---
+        ui.btnStart.onclick = startSystem;
+        ui.btnReset.onclick = resetSystem;
+
+        // 1. 启动系统
+        async function startSystem() {
+            ui.btnStart.disabled = true;
+            updateStatus('connecting', 'CONNECTING...');
+            
+            if(voices.length === 0) voices = synth.getVoices();
+
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${proto}//${window.location.host}/ws/asr`);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = async () => {
+                await startMic();
+                updateStatus('listening', 'LISTENING');
+            };
+
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'text') {
+                    ui.sub.innerText = data.content;
+                } else if (data.type === 'status_change') {
+                    updateStatus(data.status, data.status.toUpperCase());
+                    
+                    if (data.status === 'processing') {
+                        addMsg('user', data.message.replace("You: ", ""));
+                        ui.sub.innerText = "...";
+                    } 
+                    else if (data.status === 'speaking') {
+                        addMsg('ai', data.message);
+                        speak(data.message);
+                    }
+                }
+            };
+            
+            ws.onclose = () => {
+                // 如果是被 Reset 主动关闭的，不做额外处理
+                if (!ui.btnStart.disabled) return; 
+                updateStatus('idle', 'DISCONNECTED');
+                ui.btnStart.disabled = false;
+            };
+        }
+
+        // 2. 重置系统 (核心功能)
+        function resetSystem() {
+            // 停止 TTS
+            if (synth.speaking) synth.cancel();
+            
+            // 关闭 WebSocket
+            if (ws) {
+                ws.close(); // 这会让后端感知断开，清理 Session
+                ws = null;
+            }
+
+            // 关闭麦克风流 (可选，为了彻底干净)
+            if (globalStream) {
+                globalStream.getTracks().forEach(track => track.stop());
+                globalStream = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+
+            // 重置 UI
+            ui.chat.innerHTML = `
+                <div class="msg ai">
+                    <span class="name">Examiner</span>
+                    Session reset. Click "Start Test" to begin a new exam.
+                </div>
+            `;
+            ui.sub.innerText = "...";
+            ui.btnStart.disabled = false;
+            ui.btnStart.innerText = "Start Test";
+            updateStatus('idle', 'READY');
+            
+            // 重置状态
+            state.canSend = false;
+            state.isSpeaking = false;
+            state.silenceStart = null;
+        }
+
+        // --- 核心逻辑 ---
+
+        function speak(text) {
+            if (synth.speaking) synth.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            const v = voices.find(i => i.lang.includes('en-US') || i.lang.includes('en-GB'));
+            if (v) u.voice = v;
+            u.rate = 1.0; 
+
+            u.onend = () => {
+                console.log('>> TTS End');
+                // 只有在连接状态下才发送，防止 Reset 后报错
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "playback_finished" }));
+                }
+            };
+            synth.speak(u);
+        }
+
+        function updateStatus(mode, text) {
+            ui.status.className = `mode-${mode}`;
+            ui.status.innerText = text;
+            // 严格控制：只有监听模式才允许发音频
+            state.canSend = (mode === 'listening');
+            if (mode === 'listening') {
+                state.silenceStart = null;
+                state.isSpeaking = false;
+            }
+        }
+
+        function addMsg(role, text) {
+            const div = document.createElement('div');
+            div.className = `msg ${role}`;
+            div.innerHTML = `<span class="name">${role==='user'?'Candidate':'Examiner'}</span>${text}`;
+            ui.chat.appendChild(div);
+            ui.chat.scrollTop = ui.chat.scrollHeight;
+        }
+
+        async function startMic() {
+            // 每次重新获取流
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            globalStream = stream;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const src = audioCtx.createMediaStreamSource(stream);
+            processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+                if (ws && ws.readyState === WebSocket.OPEN && state.canSend) {
+                    const data = e.inputBuffer.getChannelData(0);
+                    ws.send(downsample(data, audioCtx.sampleRate, CFG.sample_rate));
+                    checkSilence(data);
+                }
+            };
+            src.connect(processor);
+            processor.connect(audioCtx.destination);
+        }
+
+        function checkSilence(buf) {
+            let sum = 0;
+            for (let i=0; i<buf.length; i++) sum += buf[i]*buf[i];
+            let rms = Math.sqrt(sum/buf.length);
+
+            if (rms > CFG.threshold) {
+                state.silenceStart = null;
+                state.isSpeaking = true;
+            } else {
+                if (state.silenceStart === null) state.silenceStart = Date.now();
+                else if (Date.now() - state.silenceStart > CFG.silence_ms && state.isSpeaking) {
+                    console.log(">> Silence -> Submit");
+                    state.canSend = false; 
+                    ws.send(JSON.stringify({ type: "done_speaking" }));
+                }
+            }
+        }
+
+        function downsample(buf, inRate, outRate) {
+            if (outRate === inRate) return floatTo16(buf);
+            let ratio = inRate / outRate;
+            let len = Math.round(buf.length / ratio);
+            let res = new Int16Array(len);
+            let offRes = 0, offBuf = 0;
+            while (offRes < len) {
+                let nextOff = Math.round((offRes + 1) * ratio);
+                let accum = 0, count = 0;
+                for (let i = offBuf; i < nextOff && i < buf.length; i++) { accum += buf[i]; count++; }
+                let s = Math.max(-1, Math.min(1, accum / count));
+                res[offRes++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                offBuf = nextOff;
+            }
+            return res.buffer;
+        }
+        function floatTo16(input) {
+            const output = new Int16Array(input.length);
+            for (let i = 0; i < input.length; i++) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            return output.buffer;
+        }
+    </script>
+</body>
+</html>
