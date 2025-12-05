@@ -1,270 +1,861 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IELTS Speaking Simulator</title>
+    <title>IELTS Speaking Test</title>
     <style>
-        :root { --bg-color: #f0f2f5; --user-bg: #007aff; --ai-bg: #e4e6eb; --text-main: #050505; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-color); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        :root {
+            --bg-color: #0f0f1a;
+            --card-bg: #1a1a2e;
+            --primary: #4f46e5;
+            --primary-light: #6366f1;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
         
-        /* 顶部导航 */
-        header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        h2 { margin: 0; font-size: 18px; color: #333; }
-        #status-badge { padding: 6px 12px; border-radius: 15px; font-size: 12px; font-weight: bold; color: white; background-color: #8e8e93; transition: all 0.3s; }
-        .mode-idle { background-color: #8e8e93; }
-        .mode-listening { background-color: #34c759; }
-        .mode-processing { background-color: #007aff; }
-        .mode-speaking { background-color: #ff9500; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
 
-        /* 聊天区 */
-        #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
-        .msg { max-width: 80%; padding: 10px 16px; border-radius: 18px; font-size: 16px; line-height: 1.5; position: relative; }
-        .msg.user { align-self: flex-end; background-color: var(--user-bg); color: white; border-bottom-right-radius: 4px; }
-        .msg.ai { align-self: flex-start; background-color: var(--ai-bg); color: var(--text-main); border-bottom-left-radius: 4px; }
-        .msg .name { font-size: 11px; margin-bottom: 4px; opacity: 0.7; display: block; }
+        /* Header */
+        header {
+            background: var(--card-bg);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .logo { font-size: 20px; font-weight: 700; }
+        .logo span { color: var(--primary-light); }
 
-        /* 底部控制区 */
-        footer { background: white; padding: 20px; border-top: 1px solid #ddd; display: flex; flex-direction: column; gap: 15px; }
-        #subtitle { height: 24px; color: #666; font-style: italic; text-align: center; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* Timer & Phase Display */
+        .exam-status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
         
-        .btn-group { display: flex; gap: 10px; }
-        button { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-        button:active { opacity: 0.8; }
+        .phase-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            background: var(--primary);
+            transition: all 0.3s;
+        }
         
-        #btnStart { background-color: #34c759; color: white; flex: 2; }
-        #btnStart:disabled { background-color: #ccc; cursor: not-allowed; }
+        .phase-badge.idle { background: #6b7280; }
+        .phase-badge.part1 { background: #3b82f6; }
+        .phase-badge.part1_end { background: #6b7280; }
+        .phase-badge.part2_prep { background: #f59e0b; }
+        .phase-badge.part2 { background: #22c55e; }
+        .phase-badge.part2_end { background: #6b7280; }
+        .phase-badge.part3 { background: #8b5cf6; }
+        .phase-badge.exam_end { background: #6b7280; }
+
+        .timer {
+            font-size: 28px;
+            font-weight: 700;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            min-width: 90px;
+            text-align: center;
+        }
         
-        #btnReset { background-color: #ff3b30; color: white; flex: 1; }
+        .timer.warning { color: var(--warning); }
+        .timer.danger { color: var(--danger); animation: pulse 1s infinite; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            display: flex;
+            padding: 24px;
+            gap: 24px;
+            overflow: hidden;
+        }
+
+        /* Chat Area */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--card-bg);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        
+        #chat-box {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .msg {
+            max-width: 75%;
+            padding: 12px 18px;
+            border-radius: 18px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        
+        .msg.user {
+            align-self: flex-end;
+            background: var(--primary);
+            border-bottom-right-radius: 4px;
+        }
+        
+        .msg.ai {
+            align-self: flex-start;
+            background: rgba(255,255,255,0.1);
+            border-bottom-left-radius: 4px;
+        }
+        
+        .msg.system {
+            align-self: center;
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+            font-style: italic;
+            max-width: 90%;
+            text-align: center;
+        }
+
+        /* Right Panel - Topic Card & Countdown */
+        .right-panel {
+            width: 340px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        /* Circular Countdown Timer */
+        .prep-timer-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px;
+            background: linear-gradient(145deg, #1e1e32, #252542);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .prep-timer-container.visible {
+            display: flex;
+        }
+        
+        .prep-timer-container h3 {
+            color: var(--warning);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+        }
+        
+        .circular-timer {
+            position: relative;
+            width: 150px;
+            height: 150px;
+        }
+        
+        .circular-timer svg {
+            transform: rotate(-90deg);
+            width: 150px;
+            height: 150px;
+        }
+        
+        .circular-timer .bg-circle {
+            fill: none;
+            stroke: rgba(255,255,255,0.1);
+            stroke-width: 8;
+        }
+        
+        .circular-timer .progress-circle {
+            fill: none;
+            stroke: var(--warning);
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 408; /* 2 * PI * 65 */
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 1s linear;
+        }
+        
+        .circular-timer .timer-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 36px;
+            font-weight: 700;
+            font-family: 'SF Mono', monospace;
+            color: var(--text-main);
+        }
+        
+        .prep-timer-label {
+            margin-top: 12px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        /* Topic Card */
+        .topic-card {
+            background: linear-gradient(145deg, #1e1e32, #252542);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,0.1);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.5s ease;
+            display: none;
+        }
+        
+        .topic-card.visible {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .topic-card h3 {
+            color: var(--warning);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+        
+        .topic-card h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            line-height: 1.4;
+            color: var(--text-main);
+        }
+        
+        .topic-card ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .topic-card li {
+            padding-left: 24px;
+            position: relative;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .topic-card li::before {
+            content: "•";
+            position: absolute;
+            left: 8px;
+            color: var(--primary-light);
+        }
+        
+        .topic-card .note {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 13px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Footer Controls */
+        footer {
+            background: var(--card-bg);
+            padding: 20px 24px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        #subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 16px;
+            min-height: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        button:hover { transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        
+        #btnStart {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            min-width: 200px;
+        }
+        
+        #btnStart:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        #btnReset {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        /* Status Indicator */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #6b7280;
+        }
+        
+        .status-dot.listening {
+            background: var(--success);
+            animation: pulse 1.5s infinite;
+        }
+        
+        .status-dot.processing { background: var(--warning); }
+        .status-dot.speaking { background: var(--primary-light); }
+        .status-dot.connecting { background: var(--warning); animation: pulse 0.5s infinite; }
+        
+        /* AI Part Indicator */
+        .ai-part-indicator {
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            background: rgba(255,255,255,0.1);
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .ai-part-indicator .part-num {
+            font-weight: 700;
+            color: var(--primary-light);
+        }
     </style>
 </head>
 <body>
 
-    <header>
-        <h2>IELTS Examiner AI</h2>
-        <div id="status-badge" class="mode-idle">READY</div>
-    </header>
-
-    <div id="chat-box">
-        <div class="msg ai">
-            <span class="name">Examiner</span>
-            Welcome to the IELTS Speaking test simulation. Click "Start Test" when you are ready.
+<header>
+    <div class="logo">IELTS <span>Speaking</span></div>
+    <div class="exam-status">
+        <div id="phase-badge" class="phase-badge idle">Ready</div>
+        <div id="timer" class="timer">--:--</div>
+        <div class="ai-part-indicator">
+            AI: Part <span id="ai-part-num" class="part-num">-</span>
+        </div>
+        <div class="status-indicator">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text">Idle</span>
         </div>
     </div>
+</header>
 
-    <footer>
-        <div id="subtitle">...</div>
-        <div class="btn-group">
-            <button id="btnStart">Start Test</button>
-            <button id="btnReset">Restart</button>
+<main>
+    <div class="chat-container">
+        <div id="chat-box">
+            <div class="msg ai">
+                Welcome to your IELTS Speaking Test simulation. 
+                Click "Start Test" when you are ready to begin.
+            </div>
         </div>
-    </footer>
-
-    <script>
-        let ws = null;
-        let audioCtx, processor, globalStream;
-        let synth = window.speechSynthesis;
-        let voices = [];
+    </div>
+    
+    <div class="right-panel">
+        <!-- Circular Countdown Timer for Part 2 Prep -->
+        <div id="prep-timer" class="prep-timer-container">
+            <h3>⏱ Preparation Time</h3>
+            <div class="circular-timer">
+                <svg viewBox="0 0 150 150">
+                    <circle class="bg-circle" cx="75" cy="75" r="65"></circle>
+                    <circle id="progress-circle" class="progress-circle" cx="75" cy="75" r="65"></circle>
+                </svg>
+                <div id="prep-time-text" class="timer-text">60</div>
+            </div>
+            <div class="prep-timer-label">seconds remaining</div>
+        </div>
         
-        // 配置
-        const CFG = { threshold: 0.02, silence_ms: 1500, sample_rate: 16000 };
-        let state = { silenceStart: null, isSpeaking: false, canSend: false };
+        <!-- Topic Card -->
+        <div id="topic-card" class="topic-card">
+            <h3>📋 Part 2 Topic Card</h3>
+            <h2 id="topic-title">Describe a place you would like to visit</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">You should say:</p>
+            <ul id="topic-points">
+                <li>Where it is</li>
+                <li>How you would go there</li>
+                <li>What you would do there</li>
+                <li>Why you would like to visit this place</li>
+            </ul>
+            <div class="note">
+                You will have to talk about the topic for 1-2 minutes.
+            </div>
+        </div>
+    </div>
+</main>
 
-        const ui = {
-            status: document.getElementById('status-badge'),
-            chat: document.getElementById('chat-box'),
-            sub: document.getElementById('subtitle'),
-            btnStart: document.getElementById('btnStart'),
-            btnReset: document.getElementById('btnReset')
+<footer>
+    <div id="subtitle">Click Start to begin...</div>
+    <div class="btn-group">
+        <button id="btnStart">Start Test</button>
+        <button id="btnReset">End Test</button>
+    </div>
+</footer>
+
+<script>
+    let ws = null;
+    let audioCtx = null;
+    let processor = null;
+    let globalStream = null;
+    let synth = window.speechSynthesis;
+    let voices = [];
+    
+    const CFG = { threshold: 0.02, silence_ms: 1500, sample_rate: 16000 };
+    let state = { silenceStart: null, isSpeaking: false, canSend: false };
+    
+    // 圆形进度条的周长
+    const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * 65; // 408
+
+    const ui = {
+        phaseBadge: document.getElementById('phase-badge'),
+        timer: document.getElementById('timer'),
+        aiPartNum: document.getElementById('ai-part-num'),
+        statusDot: document.getElementById('status-dot'),
+        statusText: document.getElementById('status-text'),
+        chat: document.getElementById('chat-box'),
+        sub: document.getElementById('subtitle'),
+        topicCard: document.getElementById('topic-card'),
+        topicTitle: document.getElementById('topic-title'),
+        topicPoints: document.getElementById('topic-points'),
+        prepTimer: document.getElementById('prep-timer'),
+        prepTimeText: document.getElementById('prep-time-text'),
+        progressCircle: document.getElementById('progress-circle'),
+        btnStart: document.getElementById('btnStart'),
+        btnReset: document.getElementById('btnReset')
+    };
+
+    // 加载语音
+    function loadVoices() {
+        voices = synth.getVoices();
+        console.log('Loaded voices:', voices.length);
+    }
+    
+    if (synth.onvoiceschanged !== undefined) {
+        synth.onvoiceschanged = loadVoices;
+    }
+    loadVoices();
+
+    ui.btnStart.onclick = startSystem;
+    ui.btnReset.onclick = resetSystem;
+
+    function formatTime(seconds) {
+        if (seconds < 0 || isNaN(seconds)) seconds = 0;
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function updateTimer(seconds, total) {
+        ui.timer.textContent = formatTime(seconds);
+        ui.timer.classList.remove('warning', 'danger');
+        if (seconds <= 30) ui.timer.classList.add('danger');
+        else if (seconds <= 60) ui.timer.classList.add('warning');
+    }
+
+    function updatePhase(phase, display) {
+        ui.phaseBadge.textContent = display || phase;
+        ui.phaseBadge.className = 'phase-badge ' + phase;
+    }
+
+    function updateStatus(status) {
+        ui.statusDot.className = 'status-dot ' + status;
+        const statusNames = {
+            'idle': 'Idle',
+            'connecting': 'Connecting...',
+            'listening': 'Listening',
+            'processing': 'Processing',
+            'speaking': 'Speaking'
+        };
+        ui.statusText.textContent = statusNames[status] || status;
+        
+        state.canSend = (status === 'listening');
+        
+        if (status === 'listening') {
+            state.silenceStart = null;
+            state.isSpeaking = false;
+        }
+    }
+
+    function updatePrepCountdown(remaining, total) {
+        // 更新数字
+        ui.prepTimeText.textContent = remaining;
+        
+        // 更新圆形进度条
+        const progress = remaining / total;
+        const offset = CIRCLE_CIRCUMFERENCE * (1 - progress);
+        ui.progressCircle.style.strokeDashoffset = offset;
+        
+        // 颜色变化
+        if (remaining <= 10) {
+            ui.progressCircle.style.stroke = '#ef4444'; // 红色
+        } else if (remaining <= 30) {
+            ui.progressCircle.style.stroke = '#f59e0b'; // 橙色
+        } else {
+            ui.progressCircle.style.stroke = '#22c55e'; // 绿色
+        }
+    }
+
+    function showTopicCard(topic) {
+        if (topic) {
+            ui.topicTitle.textContent = topic.title;
+            ui.topicPoints.innerHTML = topic.points.map(p => `<li>${p}</li>`).join('');
+        }
+        ui.topicCard.classList.add('visible');
+    }
+
+    function hideTopicCard() {
+        ui.topicCard.classList.remove('visible');
+    }
+
+    function showPrepTimer() {
+        ui.prepTimer.classList.add('visible');
+        // 重置进度条
+        ui.progressCircle.style.strokeDashoffset = 0;
+    }
+
+    function hidePrepTimer() {
+        ui.prepTimer.classList.remove('visible');
+    }
+
+    function addMsg(role, text) {
+        const div = document.createElement('div');
+        div.className = `msg ${role}`;
+        div.textContent = text;
+        ui.chat.appendChild(div);
+        ui.chat.scrollTop = ui.chat.scrollHeight;
+    }
+
+    async function startSystem() {
+        ui.btnStart.disabled = true;
+        updateStatus('connecting');
+        
+        if (voices.length === 0) {
+            voices = synth.getVoices();
+        }
+
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${window.location.host}/ws/asr`);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = async () => {
+            console.log('WebSocket connected');
+            try {
+                await startMic();
+                updateStatus('listening');
+                addMsg('ai', "Good morning. This is the IELTS Speaking test. Let's begin with Part 1. Could you tell me your full name, please?");
+                ui.sub.textContent = "Speak when ready...";
+            } catch (err) {
+                console.error('Mic error:', err);
+                addMsg('system', 'Error: Could not access microphone');
+                updateStatus('idle');
+            }
         };
 
-        // 加载语音
-        window.speechSynthesis.onvoiceschanged = () => { voices = synth.getVoices(); };
-
-        // --- 按钮事件 ---
-        ui.btnStart.onclick = startSystem;
-        ui.btnReset.onclick = resetSystem;
-
-        // 1. 启动系统
-        async function startSystem() {
-            ui.btnStart.disabled = true;
-            updateStatus('connecting', 'CONNECTING...');
-            
-            if(voices.length === 0) voices = synth.getVoices();
-
-            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${proto}//${window.location.host}/ws/asr`);
-            ws.binaryType = 'arraybuffer';
-
-            ws.onopen = async () => {
-                await startMic();
-                updateStatus('listening', 'LISTENING');
-            };
-
-            ws.onmessage = (e) => {
+        ws.onmessage = (e) => {
+            try {
                 const data = JSON.parse(e.data);
-                if (data.type === 'text') {
-                    ui.sub.innerText = data.content;
-                } else if (data.type === 'status_change') {
-                    updateStatus(data.status, data.status.toUpperCase());
+                console.log('Received:', data.type, data.phase || '');
+                
+                if (data.type === 'exam_state') {
+                    updatePhase(data.phase, data.phase_display);
+                    updateTimer(data.remaining_seconds, data.total_seconds);
+                    
+                    // 显示 AI 检测到的 Part
+                    if (data.ai_detected_part) {
+                        ui.aiPartNum.textContent = data.ai_detected_part;
+                    }
+                    
+                    // Part 2 准备阶段 - 显示倒计时和题目卡片
+                    if (data.phase === 'part2_prep') {
+                        showPrepTimer();
+                        if (data.prep_countdown !== undefined) {
+                            updatePrepCountdown(data.prep_countdown, data.prep_total || 60);
+                        }
+                        if (data.part2_topic) {
+                            showTopicCard(data.part2_topic);
+                        }
+                    } else {
+                        hidePrepTimer();
+                    }
+                    
+                    // Part 2 陈述阶段 - 只显示题目卡片
+                    if (data.phase === 'part2') {
+                        if (data.part2_topic) {
+                            showTopicCard(data.part2_topic);
+                        }
+                    }
+                    
+                    // 其他阶段 - 隐藏题目卡片
+                    if (!['part2_prep', 'part2'].includes(data.phase)) {
+                        hideTopicCard();
+                    }
+                    
+                    // if (!data.accepting_audio) {
+                    //     state.canSend = false;
+                    // }
+                }
+                else if (data.type === 'text') {
+                    ui.sub.textContent = data.content;
+                }
+                else if (data.type === 'status_change') {
+                    updateStatus(data.status);
                     
                     if (data.status === 'processing') {
                         addMsg('user', data.message.replace("You: ", ""));
-                        ui.sub.innerText = "...";
-                    } 
+                        ui.sub.textContent = "Thinking...";
+                    }
                     else if (data.status === 'speaking') {
                         addMsg('ai', data.message);
                         speak(data.message);
                     }
+                    else if (data.status === 'listening') {
+                        ui.sub.textContent = data.message || "Listening...";
+                    }
                 }
-            };
-            
-            ws.onclose = () => {
-                // 如果是被 Reset 主动关闭的，不做额外处理
-                if (!ui.btnStart.disabled) return; 
-                updateStatus('idle', 'DISCONNECTED');
-                ui.btnStart.disabled = false;
-            };
-        }
-
-        // 2. 重置系统 (核心功能)
-        function resetSystem() {
-            // 停止 TTS
-            if (synth.speaking) synth.cancel();
-            
-            // 关闭 WebSocket
-            if (ws) {
-                ws.close(); // 这会让后端感知断开，清理 Session
-                ws = null;
+                else if (data.type === 'system_speak') {
+                    addMsg('system', data.content);
+                    speak(data.content);
+                }
+            } catch (err) {
+                console.error('Message parse error:', err);
             }
-
-            // 关闭麦克风流 (可选，为了彻底干净)
-            if (globalStream) {
-                globalStream.getTracks().forEach(track => track.stop());
-                globalStream = null;
-            }
-            if (audioCtx) {
-                audioCtx.close();
-                audioCtx = null;
-            }
-
-            // 重置 UI
-            ui.chat.innerHTML = `
-                <div class="msg ai">
-                    <span class="name">Examiner</span>
-                    Session reset. Click "Start Test" to begin a new exam.
-                </div>
-            `;
-            ui.sub.innerText = "...";
+        };
+        
+        ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+        };
+        
+        ws.onclose = (e) => {
+            console.log('WebSocket closed:', e.code, e.reason);
+            updateStatus('idle');
             ui.btnStart.disabled = false;
-            ui.btnStart.innerText = "Start Test";
-            updateStatus('idle', 'READY');
-            
-            // 重置状态
-            state.canSend = false;
-            state.isSpeaking = false;
-            state.silenceStart = null;
+        };
+    }
+
+    function resetSystem() {
+        console.log('Resetting system...');
+        
+        if (synth.speaking) {
+            synth.cancel();
+        }
+        
+        if (ws) {
+            ws.close();
+            ws = null;
         }
 
-        // --- 核心逻辑 ---
-
-        function speak(text) {
-            if (synth.speaking) synth.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            const v = voices.find(i => i.lang.includes('en-US') || i.lang.includes('en-GB'));
-            if (v) u.voice = v;
-            u.rate = 1.0; 
-
-            u.onend = () => {
-                console.log('>> TTS End');
-                // 只有在连接状态下才发送，防止 Reset 后报错
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: "playback_finished" }));
-                }
-            };
-            synth.speak(u);
+        if (globalStream) {
+            globalStream.getTracks().forEach(track => track.stop());
+            globalStream = null;
+        }
+        
+        if (processor) {
+            processor.disconnect();
+            processor = null;
+        }
+        
+        if (audioCtx) {
+            audioCtx.close();
+            audioCtx = null;
         }
 
-        function updateStatus(mode, text) {
-            ui.status.className = `mode-${mode}`;
-            ui.status.innerText = text;
-            // 严格控制：只有监听模式才允许发音频
-            state.canSend = (mode === 'listening');
-            if (mode === 'listening') {
-                state.silenceStart = null;
-                state.isSpeaking = false;
+        ui.chat.innerHTML = `
+            <div class="msg ai">
+                Test ended. Click "Start Test" to begin a new session.
+            </div>
+        `;
+        ui.sub.textContent = "Click Start to begin...";
+        ui.timer.textContent = "--:--";
+        ui.timer.classList.remove('warning', 'danger');
+        ui.aiPartNum.textContent = "-";
+        hideTopicCard();
+        hidePrepTimer();
+        ui.btnStart.disabled = false;
+        updatePhase('idle', 'Ready');
+        updateStatus('idle');
+        
+        state.canSend = false;
+        state.isSpeaking = false;
+        state.silenceStart = null;
+    }
+
+    function speak(text) {
+        if (synth.speaking) {
+            synth.cancel();
+        }
+        
+        const u = new SpeechSynthesisUtterance(text);
+        
+        const englishVoice = voices.find(v => 
+            v.lang.includes('en-US') || v.lang.includes('en-GB')
+        );
+        if (englishVoice) {
+            u.voice = englishVoice;
+        }
+        
+        u.rate = 0.95;
+        u.pitch = 1.0;
+
+        u.onend = () => {
+            console.log('TTS finished');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "playback_finished" }));
             }
+        };
+        
+        u.onerror = (e) => {
+            console.error('TTS error:', e);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "playback_finished" }));
+            }
+        };
+        
+        synth.speak(u);
+    }
+
+    async function startMic() {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } 
+        });
+        
+        globalStream = stream;
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const src = audioCtx.createMediaStreamSource(stream);
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (e) => {
+            if (ws && ws.readyState === WebSocket.OPEN && state.canSend) {
+                const inputData = e.inputBuffer.getChannelData(0);
+                const audioData = downsample(inputData, audioCtx.sampleRate, CFG.sample_rate);
+                ws.send(audioData);
+                checkSilence(inputData);
+            }
+        };
+        
+        src.connect(processor);
+        processor.connect(audioCtx.destination);
+        
+        console.log('Microphone started');
+    }
+
+    function checkSilence(buf) {
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) {
+            sum += buf[i] * buf[i];
         }
+        const rms = Math.sqrt(sum / buf.length);
 
-        function addMsg(role, text) {
-            const div = document.createElement('div');
-            div.className = `msg ${role}`;
-            div.innerHTML = `<span class="name">${role==='user'?'Candidate':'Examiner'}</span>${text}`;
-            ui.chat.appendChild(div);
-            ui.chat.scrollTop = ui.chat.scrollHeight;
-        }
-
-        async function startMic() {
-            // 每次重新获取流
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            globalStream = stream;
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const src = audioCtx.createMediaStreamSource(stream);
-            processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
-            processor.onaudioprocess = (e) => {
-                if (ws && ws.readyState === WebSocket.OPEN && state.canSend) {
-                    const data = e.inputBuffer.getChannelData(0);
-                    ws.send(downsample(data, audioCtx.sampleRate, CFG.sample_rate));
-                    checkSilence(data);
-                }
-            };
-            src.connect(processor);
-            processor.connect(audioCtx.destination);
-        }
-
-        function checkSilence(buf) {
-            let sum = 0;
-            for (let i=0; i<buf.length; i++) sum += buf[i]*buf[i];
-            let rms = Math.sqrt(sum/buf.length);
-
-            if (rms > CFG.threshold) {
-                state.silenceStart = null;
-                state.isSpeaking = true;
-            } else {
-                if (state.silenceStart === null) state.silenceStart = Date.now();
-                else if (Date.now() - state.silenceStart > CFG.silence_ms && state.isSpeaking) {
-                    console.log(">> Silence -> Submit");
-                    state.canSend = false; 
+        if (rms > CFG.threshold) {
+            state.silenceStart = null;
+            state.isSpeaking = true;
+        } else {
+            if (state.silenceStart === null) {
+                state.silenceStart = Date.now();
+            } else if (Date.now() - state.silenceStart > CFG.silence_ms && state.isSpeaking) {
+                console.log('Silence detected, submitting...');
+                state.canSend = false;
+                state.isSpeaking = false;
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: "done_speaking" }));
                 }
             }
         }
+    }
 
-        function downsample(buf, inRate, outRate) {
-            if (outRate === inRate) return floatTo16(buf);
-            let ratio = inRate / outRate;
-            let len = Math.round(buf.length / ratio);
-            let res = new Int16Array(len);
-            let offRes = 0, offBuf = 0;
-            while (offRes < len) {
-                let nextOff = Math.round((offRes + 1) * ratio);
-                let accum = 0, count = 0;
-                for (let i = offBuf; i < nextOff && i < buf.length; i++) { accum += buf[i]; count++; }
-                let s = Math.max(-1, Math.min(1, accum / count));
-                res[offRes++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                offBuf = nextOff;
-            }
-            return res.buffer;
+    function downsample(buf, inRate, outRate) {
+        if (outRate === inRate) {
+            return floatTo16(buf);
         }
-        function floatTo16(input) {
-            const output = new Int16Array(input.length);
-            for (let i = 0; i < input.length; i++) {
-                let s = Math.max(-1, Math.min(1, input[i]));
-                output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        
+        const ratio = inRate / outRate;
+        const len = Math.round(buf.length / ratio);
+        const res = new Int16Array(len);
+        
+        for (let i = 0; i < len; i++) {
+            const start = Math.floor(i * ratio);
+            const end = Math.floor((i + 1) * ratio);
+            let sum = 0;
+            let count = 0;
+            
+            for (let j = start; j < end && j < buf.length; j++) {
+                sum += buf[j];
+                count++;
             }
-            return output.buffer;
+            
+            const avg = count > 0 ? sum / count : 0;
+            const clamped = Math.max(-1, Math.min(1, avg));
+            res[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
         }
-    </script>
+        
+        return res.buffer;
+    }
+    
+    function floatTo16(input) {
+        const output = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]));
+            output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        return output.buffer;
+    }
+</script>
 </body>
 </html>
